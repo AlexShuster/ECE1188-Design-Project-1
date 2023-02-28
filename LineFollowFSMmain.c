@@ -39,12 +39,13 @@ policies, either expressed or implied, of the FreeBSD Project.
 #include <stdint.h>
 #include "msp.h"
 #include "../inc/Clock.h"
+#include "../inc/CortexM.h"
 #include "../inc/LaunchPad.h"
+#include "../inc/Motor.h"
+#include "../inc/BumpInt.h"
 #include "../inc/TExaS.h"
+#include "../inc/TimerA1.h"
 #include "../inc/Reflectance.h"
-#include "../inc/MotorSimple.h"
-#include "../inc/SysTick.h"
-#include <stdio.h>
 
 /*(Left,Right) Motors, call LaunchPad_Output (positive logic)
 3   1,1     both motors, yellow means go straight
@@ -67,7 +68,9 @@ void Pause(void)
 
 // Linked data structure
 struct State {
-  uint32_t out;                // 2-bit output
+  uint8_t  out;
+  uint32_t leftDuty;                // 2-bit output
+  uint32_t rightDuty;
   char outString;
   uint32_t delay;              // time to delay in 1ms
   const struct State *next[16]; // Next if 2-bit input is 0-3
@@ -81,19 +84,43 @@ typedef const struct State State_t;
 #define HeavyLeft &fsm[4]
 #define PreviousLeftLost &fsm[5]
 #define PreviousRightLost &fsm[6]
+#define CenterLeft &fsm[7]
+#define CenterRight &fsm[8]
 
-State_t fsm[7]={
-  {0x03, 'C', 75, { Center, HeavyRight, Right, Center, Left, Center, Center, Center, HeavyLeft, Center, Center, Center, HeavyLeft, Center, Center, Center  }},  // Center
-  {0x02, 'l', 25, { PreviousLeftLost, HeavyRight, Right, Right, Left, Left, Center, Left, HeavyLeft, Left, Left, Left, HeavyLeft, Left, Left, Left}},  // Left
-  {0x05, 'L', 25, { PreviousLeftLost, HeavyRight, Right, HeavyRight, Left, HeavyRight, Left, Left, HeavyLeft, HeavyLeft, Left, Left, HeavyLeft, HeavyLeft, Left, HeavyLeft }}, // Heavy Left
-  {0x01, 'r', 25, { PreviousRightLost, HeavyRight, Right, HeavyRight, Left, Right, Center, Right, HeavyLeft, Right, Right, Right, HeavyLeft, Right, Right, Right}},   // Right
-  {0x06, 'R', 25, { PreviousRightLost, HeavyRight, Right, HeavyRight, Left, HeavyRight, Left, HeavyRight, HeavyLeft, HeavyRight, HeavyRight, HeavyRight, HeavyLeft, HeavyRight, HeavyRight, HeavyRight}}, // Heavy Right
-  {0x00, 'p', 25, { PreviousLeftLost, HeavyLeft, Left, HeavyRight, Left, PreviousLeftLost, Left, PreviousLeftLost, HeavyLeft, PreviousLeftLost, PreviousLeftLost, PreviousLeftLost, HeavyLeft, PreviousLeftLost, PreviousLeftLost, PreviousRightLost }}, // Previous Left Lost
-  {0x00, 'P', 25, { PreviousRightLost, HeavyRight, Right, HeavyRight, Left, PreviousRightLost, Right, PreviousRightLost, HeavyLeft, PreviousRightLost, PreviousRightLost, PreviousRightLost, HeavyLeft, PreviousRightLost, PreviousRightLost, PreviousLeftLost }}
+
+// Color    LED(s) Port2
+// dark     ---    0
+// red      R--    0x01
+// blue     --B    0x04
+// green    -G-    0x02
+// yellow   RG-    0x03
+// sky blue -GB    0x06
+// white    RGB    0x07
+// pink     R-B    0x05
+
+State_t fsm[9]={
+//  {0x00, 2700, 2700, 'C', 2000, { Center, HeavyRight, Right, Center, Left, Center, Center, Center, HeavyLeft, Center, Center, Center, HeavyLeft, Center, Center, Center  }},  // Center
+//  {0x01, 2400, 1300, 'l', 1000, { PreviousLeftLost, HeavyRight, Right, Right, Left, Left, CenterLeft, Left, HeavyLeft, Left, Left, Left, HeavyLeft, Left, Left, Left}},  // Left
+//  {0x02, 2500, 1200, 'L', 700, { PreviousLeftLost, HeavyRight, Right, HeavyRight, Left, HeavyRight, Left, Left, HeavyLeft, HeavyLeft, Left, Left, HeavyLeft, HeavyLeft, Left, HeavyLeft }}, // Heavy Left
+//  {0x03, 1300, 2400, 'r', 1000, { PreviousRightLost, HeavyRight, Right, HeavyRight, Left, Right, CenterRight, Right, HeavyLeft, Right, Right, Right, HeavyLeft, Right, Right, Right}},   // Right
+//  {0x04, 1200, 2500, 'R', 700, { PreviousRightLost, HeavyRight, Right, HeavyRight, Left, HeavyRight, Left, HeavyRight, HeavyLeft, HeavyRight, HeavyRight, HeavyRight, HeavyLeft, HeavyRight, HeavyRight, HeavyRight}}, // Heavy Right
+//  {0x05, 2700, 10,    'p', 700, { PreviousLeftLost, HeavyLeft, Left, HeavyRight, Left, PreviousLeftLost, Left, PreviousLeftLost, HeavyLeft, PreviousLeftLost, PreviousLeftLost, PreviousLeftLost, HeavyLeft, PreviousLeftLost, PreviousLeftLost, PreviousRightLost }}, // Previous Left Lost
+//  {0x06, 10, 2700,    'P', 700, { PreviousRightLost, HeavyRight, Right, HeavyRight, Left, PreviousRightLost, Right, PreviousRightLost, HeavyLeft, PreviousRightLost, PreviousRightLost, PreviousRightLost, HeavyLeft, PreviousRightLost, PreviousRightLost, PreviousLeftLost }},
+//  {0x07, 1675, 2700, 'd', 1000, { Center, HeavyRight, Right, Right, Left, Center, Center, Center, HeavyLeft, Center, Center, Center, Left, Center, Center, Center}},
+//  {0x07, 2700, 1675, 'D', 1000, { Center, HeavyRight, Right, Right, Left, Center, Center, Center, HeavyLeft, Center, Center, Center, Left, Center, Center, Center}}
+    {0x00   , 7000, 7000, 'C', 2000, { Center, HeavyRight, Right, HeavyRight, Left, Center, Center, HeavyRight, HeavyLeft, Center, Center, Center, HeavyLeft, Center, Center, Center  }},  // Center
+    {0x01   , 4000, 3000, 'C', 2000, { Center, HeavyRight, Right, HeavyRight, Left, Center, Center, HeavyRight, HeavyLeft, Center, Center, Center, HeavyLeft, Center, Center, Center  }},  // Center
+    {0x02   , 5000, 2000, 'C', 2000, { Center, HeavyRight, Right, HeavyRight, Left, Center, Center, HeavyRight, HeavyLeft, Center, Center, Center, HeavyLeft, Center, Center, Center  }},  // Center
+    {0x03   , 3000, 4000, 'C', 2000, { Center, HeavyRight, Right, HeavyRight, Left, Center, Center, HeavyRight, HeavyLeft, Center, Center, Center, HeavyLeft, Center, Center, Center  }},  // Center
+    {0x04   , 2000, 5000, 'C', 2000, { Center, HeavyRight, Right, HeavyRight, Left, Center, Center, HeavyRight, HeavyLeft, Center, Center, Center, HeavyLeft, Center, Center, Center  }},  // Center
+    {0x05   , 7000, 0, 'C', 2000, { Center, HeavyRight, Right, HeavyRight, Left, Center, Center, HeavyRight, HeavyLeft, Center, Center, Center, HeavyLeft, Center, Center, Center  }},  // Center
+    {0x06   , 0, 7000, 'C', 2000, { Center, HeavyRight, Right, HeavyRight, Left, Center, Center, HeavyRight, HeavyLeft, Center, Center, Center, HeavyLeft, Center, Center, Center  }},  // Center
+    {0x07   , 6750, 7000, 'C', 2000, { Center, HeavyRight, Right, HeavyRight, Left, Center, Center, HeavyRight, HeavyLeft, Center, Center, Center, HeavyLeft, Center, Center, Center  }},  // Center
+    {0x00   , 7000, 6750, 'C', 2000, { Center, HeavyRight, Right, HeavyRight, Left, Center, Center, HeavyRight, HeavyLeft, Center, Center, Center, HeavyLeft, Center, Center, Center  }},  // Center
 
 };
 State_t *Spt;  // pointer to the current state
-uint32_t Input;
+uint8_t Input;
 uint32_t Output;
 char outputString;
 /*Run FSM continuously
@@ -108,8 +135,9 @@ int main(void)
     uint32_t heart=0;
     Reflectance_Init();
     Clock_Init48MHz();
+    Motor_Init();        // activate Lab 13 software
     LaunchPad_Init();
-    Motor_InitSimple();
+//    Motor_InitSimple();
     TExaS_Init(LOGICANALYZER);  // optional
     Spt = Center;
     Pause();
@@ -117,47 +145,52 @@ int main(void)
         Output = Spt->out;            // set output from FSM
         outputString = Spt-> outString;
         LaunchPad_Output(Output);     // do output to two motors
-        if (outputString == 'C')
-        {
-            Motor_ForwardSimple(2000, Spt->delay);
-        }
-        else if (outputString == 'r')
-        {
-            Motor_RightSimple(1500, Spt->delay);
-        }
-        else if (outputString == 'l')
-        {
-            Motor_LeftSimple(1500, Spt->delay);
-        }
-        else if (outputString == 'R')
-        {
-            Motor_RightSimple(2000, Spt->delay);
-        }
-        else if (outputString == 'L')
-        {
-            Motor_LeftSimple(2000, Spt->delay);
-        }
-        else if (outputString == 'p')
-        {
-            Motor_LeftSimple(2500, Spt->delay);
-        }
-        else if (outputString == 'P')
-        {
-            Motor_RightSimple(2500, Spt->delay);
-        }
-        else
-        {
-            Motor_StopSimple();
-        }
+        Motor_Forward(Spt->leftDuty,Spt->rightDuty);
+//        if (outputString == 'C')
+//        {
+//            Motor_Forward(7000,7000);
+//        }
+//        else if (outputString == 'r')
+//        {
+//            Motor_RightSimple(1500, Spt->delay);
+//        }
+//        else if (outputString == 'l')
+//        {
+//            Motor_LeftSimple(1500, Spt->delay);
+//        }
+//        else if (outputString == 'R')
+//        {
+//            Motor_RightSimple(2000, Spt->delay);
+//        }
+//        else if (outputString == 'L')
+//        {
+//            Motor_LeftSimple(2000, Spt->delay);
+//        }
+//        else if (outputString == 'p')
+//        {
+//            Motor_LeftSimple(2500, Spt->delay);
+//        }
+//        else if (outputString == 'P')
+//        {
+//            Motor_RightSimple(2500, Spt->delay);
+//        }
+//        else
+//        {
+//            Motor_StopSimple();
+//        }
 
 
-        TExaS_Set(Input<<2|Output);   // optional, send data to logic analyzer
-        Clock_Delay1ms(Spt->delay);   // wait
+//        TExaS_Set(Input<<2|Output);   // optional, send data to logic analyzer
+        Clock_Delay1us(Spt->delay);   // wait
         // Input = LaunchPad_Input();    // read sensors
         reading = Reflectance_Read(1000);
         uint8_t InputMSB = (reading >> 3) & 0x08;
         uint8_t InputMid = (reading >> 2) & 0x06;
         uint8_t InputLSB = (reading >> 1) & 0x01;
+//        uint8_t InputMSB =  (((reading >> 7) & 0x01) | ((reading >> 6) & 0x01)) << 0x03;
+//        uint8_t InputMid1 = (((reading >> 5) & 0x01) | ((reading >> 4) & 0x01)) << 0x02;
+//        uint8_t InputMid2 = (((reading >> 3) & 0x01) | ((reading >> 2) & 0x01)) << 0x01;
+//        uint8_t InputLSB =  (((reading >> 1) & 0x01) | (reading & 0x01));
         Input = InputMSB + InputMid + InputLSB;
 
         Spt = Spt->next[Input];       // next depends on input and state
@@ -166,12 +199,4 @@ int main(void)
     }
 }
 
-// Color    LED(s) Port2
-// dark     ---    0
-// red      R--    0x01
-// blue     --B    0x04
-// green    -G-    0x02
-// yellow   RG-    0x03
-// sky blue -GB    0x06
-// white    RGB    0x07
-// pink     R-B    0x05
+
