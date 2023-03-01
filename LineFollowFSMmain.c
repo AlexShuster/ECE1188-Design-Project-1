@@ -102,17 +102,17 @@ typedef const struct State State_t;
 // pink     R-B    0x05
 
 State_t fsm[11]={
-    {0x00   , 4500, 4500, 100, { CLOST,  HR, R, CR, C, CL, L, HL}},  // CENTER
-    {0x01   , 2000, 4000, 15, { HR, HR, R, CR, C, CL, L, HL    }},    // LEFT
-    {0x02   , 4000, 2000, 15, { HL, HR, R, CR, C, CL, L, HL}},     // RIGHT
-    {0x03   , 6500, 500, 15, { HR, HR, R, CR, C, CL, L, HL}},     // HEAVY RIGHT
-    {0x04   , 500, 6500, 15, { HL, HR, R, CR, C, CL, L, HL  }},   // HEAVY LEFT
-    {0x05   , 2500, 1000, 15, { HR, HR, R, CR, C, CL, L, HL }},  // PREVIOUS LEFT LOST
-    {0x06   , 1000, 2500, 15, { HL, HR, R, CR, C, CL, L, HL }},  // PRL
-    {0x07   , 4000, 4500, 15, { HR, HR, R, CR, C, CL, L, HL }},  // CENTER LEFT
-    {0x00   , 4500, 4000, 15, { HL, HR, R, CR, C, CL, L, HL  }},  // CENTER RIGHT
+    {0x00   , 5000, 5000, 5, { CLOST,  HR, R, CR, C, CL, L, HL}},  // CENTER
+    {0x01   , 2500, 4500, 3, { HR, HR, R, CR, C, CL, L, HL    }},    // LEFT
+    {0x02   , 4500, 2500, 3, { HL, HR, R, CR, C, CL, L, HL}},     // RIGHT
+    {0x03   , 6500, 1000, 1, { HR, HR, R, CR, C, CL, L, HL}},     // HEAVY RIGHT
+    {0x04   , 1000, 6500, 1, { HL, HR, R, CR, C, CL, L, HL  }},   // HEAVY LEFT
+    {0x05   , 3000, 1500, 1, { HR, HR, R, CR, C, CL, L, HL }},  // PREVIOUS LEFT LOST
+    {0x06   , 1500, 3000, 1, { HL, HR, R, CR, C, CL, L, HL }},  // PRL
+    {0x07   , 4500, 5000, 1, { HR, HR, R, CR, C, CL, L, HL }},  // CENTER LEFT
+    {0x00   , 5000, 4500, 1, { HL, HR, R, CR, C, CL, L, HL  }},  // CENTER RIGHT
     {0x00   , 0, 0, 200, { STOP, STOP, STOP, STOP, STOP, STOP, STOP, STOP  }},  // STOP
-    {0x00   , 4500, 4500, 15, { C, C, C, C, C, C, C,C  }}  // CENTER LOST
+    {0x00   , 4500, 4500, 1, { C, C, C, C, C, C, C,C  }}  // CENTER LOST
 
 };
 State_t *Spt;  // pointer to the current state
